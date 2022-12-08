@@ -61,6 +61,9 @@ if __name__ == "__main__":
             loader.load_target_dim_security()
             loader.load_prospect()
             loader.load_broker()
+            # it has to be loaded after DimAccount
+            loader.load_target_fact_cash_balance()
+
     end = time.time()
     print(end-start)
     

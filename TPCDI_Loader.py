@@ -1038,6 +1038,32 @@ class TPCDI_Loader():
         os.system(dim_company_load_cmd)
         os.system(dim_company_sdc_cmd)
 
+    def load_target_fact_cash_balance(self):
+        """
+        create FactCashBalances table
+        """
+        # Create ddl to store tradeType
+        fact_cash_balance_ddl = """
+        USE """ + self.db_name + """;
+
+        CREATE TABLE FactCashBalances (
+            SK_CustomerID INTEGER NOT NULL PRIMARY KEY,
+            SK_AccountID INTEGER NOT NULL,
+            SK_DateID INTEGER(10) Not NULL,
+            Cash INTEGER Not NULL,
+            BatchID numeric(5) Not NULL
+          );
+        """
+        dim_company_load_query = """
+              INSERT INTO FactCashBalances (SK_CustomerID,SK_AccountID,SK_DateID,Cash,BatchID)
+              SELECT C.CT_CA_ID, A.SK_AccountID, D.SK_DateID , C.CT_AMT , 1
+              FROM S_Cash_Balances C
+              JOIN DimAccount A ON C.SK_CustomerID = A.SK_CustomerID
+              JOIN DimDate D on DATE(c.CT_DTS) = D.DateValue
+              where A.IsCurrent = true
+              ON DUPLICATE KEY UPDATE Cash = (Cash + C.CT_AMT);
+            """
+
     def load_target_dim_security(self):
         """
     Create Security table in the staging database and then load rows by ..
