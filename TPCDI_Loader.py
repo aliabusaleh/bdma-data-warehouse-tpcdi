@@ -1057,7 +1057,6 @@ class TPCDI_Loader():
 
         conn = get_mysql_conn(self.db_name, self.config)
         query = "SELECT * FROM S_Customer"
-        print('here')
         s_customer = pd.read_sql(query, conn)
         conn.close()
 
