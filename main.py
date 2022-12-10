@@ -92,8 +92,8 @@ if __name__ == "__main__":
             loader.load_target_fact_cash_balance()
             print("+-----------------FactCashBalance Loaded-------------------+")
             # it has to be loaded after DimTrade
-            loader.load_target_fact_holding()
-            print("+-------------------FactHolding Loaded---------------------+")
+            # loader.load_target_fact_holding()
+            # print("+-------------------FactHolding Loaded---------------------+")
 
     end = time.time()
     print(end-start)

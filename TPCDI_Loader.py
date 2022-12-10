@@ -1056,7 +1056,8 @@ class TPCDI_Loader():
         NULL = ""
 
         conn = get_mysql_conn(self.db_name, self.config)
-        query = "SELECT * FROM S_customer"
+        query = "SELECT * FROM S_Customer"
+        print('here')
         s_customer = pd.read_sql(query, conn)
         conn.close()
 
@@ -1702,7 +1703,7 @@ class TPCDI_Loader():
 
                CREATE TABLE FactHoldings (
                    TradeID INTEGER NOT NULL PRIMARY KEY,
-                   CurrentTradeID INTEGER NOT NULL PRIMARY KEY,
+                   CurrentTradeID INTEGER NOT NULL ,
                    SK_CustomerID INTEGER NOT NULL,
                    SK_AccountID INTEGER NOT NULL,
                    SK_SecurityID INTEGER NOT NULL,
