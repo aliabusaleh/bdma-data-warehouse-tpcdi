@@ -1,10 +1,10 @@
-import operator
 import tempfile
 import os
-import string
-import random
-from contextlib import ExitStack 
+from contextlib import ExitStack
 from heapq import merge
+from sqlalchemy import create_engine
+import mysql.connector as connection
+import numpy as np
 
 
 class CSV_Transformer():
@@ -20,11 +20,92 @@ class CSV_Transformer():
         return line.split(self.delimiter)
     def inverse_transform(self, transformed):
         return self.delimiter.join(transformed)
+def get_marketing_nameplate(row):
+    net_worth = row["NetWorth"]
+    income = row["Income"]
+    num_children = row["NumberChildren"]
+    num_credit_cards = row["NumberCreditCards"]
+    age = row["Age"]
+    credit_rating = row["CreditRating"]
+    num_cars = row["NumberCars"]
+
+    result = []
+
+    if net_worth and net_worth > 1000000 or income and income > 200000:
+        result.append('HighValue')
+
+    if num_children and num_children > 3 or num_credit_cards and num_credit_cards > 5:
+        result.append('Expenses')
+
+    if age and age > 45:
+        result.append('Boomer')
+
+    if income and income < 50000 or credit_rating and credit_rating < 600 or net_worth and net_worth < 100000:
+        result.append('MoneyAlert')
+
+    if num_cars and num_cars > 3 or num_credit_cards and num_credit_cards > 7:
+        result.append('Spender')
+
+    if age and age < 25 and net_worth and net_worth > 1000000:
+        result.append('Inherited')
+
+    return '+'.join(result)
+
+def get_prospect(c, df_prospect):
+    if c["IsCurrent"] and c["ProspectKey"] in df_prospect.index:
+        row = df_prospect.loc[c["ProspectKey"]]
+        return [row["AgencyID"], row["CreditRating"], row["NetWorth"], get_marketing_nameplate(row)]
+    else:
+        return [np.nan, np.nan, np.nan, np.nan]
+
+def get_mysql_conn(db_name,config):
+    conn = connection.connect(host=config['MEMSQL_SERVER']['memsql_host'],
+                              database=db_name,
+                              user=config['MEMSQL_SERVER']['memsql_user'],
+                              password=config['MEMSQL_SERVER']['memsql_pswd'])
+    return conn
+
+def get_mysql_engine(db_name,config):
+    conn = connection.connect(host=config['MEMSQL_SERVER']['memsql_host'],
+                              database=db_name,
+                              user=config['MEMSQL_SERVER']['memsql_user'],
+                              password=config['MEMSQL_SERVER']['memsql_pswd'])
+    engine_str = "mysql+pymysql://" + config['MEMSQL_SERVER']['memsql_user'] + ":"
+    engine_str = engine_str + config['MEMSQL_SERVER']['memsql_pswd'] + "@"
+    engine_str = engine_str + config['MEMSQL_SERVER']['memsql_host'] + "/" + db_name
+    engine = create_engine(engine_str)
+    con = engine.connect()
+    return con
+
+def get_cust_phone(n, row):
+    c_e = row["C_PHONE_" + str(n) + "_C_EXT"]
+    c_l = row["C_PHONE_" + str(n) + "_C_LOCAL"]
+    c_ac = row["C_PHONE_" + str(n) + "_C_AREA_CODE"]
+    c_cc = row["C_PHONE_" + str(n) + "_C_CTRY_CODE"]
+
+    if c_cc and c_ac and c_l:
+        phone = '+' + c_cc + ' (' + c_ac + ') ' + c_l
+    elif c_ac and c_l:
+        phone = '(' + c_ac + ') ' + c_l
+    elif c_l:
+        phone = c_l
+    else:
+        return ""
+
+    if c_e:
+        return phone + c_e
+
+    return phone
+
+def to_upper(value):
+    if value != np.nan:
+        return str(value).upper()
+    return ""
 
 def prepare_char_insertion(field):
     if field is None:
         return "''"
-    if field is "''":
+    if field == "''":
         return field
     field = field.replace("'", "''")
     field = field.replace('"', '\\"')
@@ -35,7 +116,7 @@ def prepare_numeric_insertion(numeric):
         int(numeric)
         return numeric
     except:
-        return "''"
+        return "NULL"
 
 def external_sort(input_file, transformer, col_idx, max_chunk_size=50):
     """
@@ -45,7 +126,7 @@ def external_sort(input_file, transformer, col_idx, max_chunk_size=50):
         transformer (obj): Instance of a row-to-list transformer class.
         col_idx (int): Index of the list column used for sorting.
         max_chunk_size (int): Maximum number of lines contained in a chunk file.
-        on_finished (fun): Function to be executed with the outputfile as parameter when the sorting is finished.
+        #on_finished (fun): Function to be executed with the outputfile as parameter when the sorting is finished.
 
     WARNING: This will perform inplace operation, sorted version of the file will be written in the input file
     """

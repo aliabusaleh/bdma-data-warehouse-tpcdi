@@ -1,8 +1,14 @@
 import os
 import glob
+import numpy as np
+import pandas as pd
+from datetime import datetime, date
 import xmltodict
+import warnings
+warnings.filterwarnings('ignore')
 
-from utils import prepare_char_insertion, prepare_numeric_insertion
+from utils import prepare_char_insertion, prepare_numeric_insertion, get_mysql_conn, get_cust_phone, to_upper, get_mysql_engine, get_prospect
+
 
 
 class TPCDI_Loader():
@@ -22,11 +28,13 @@ class TPCDI_Loader():
         self.sf = sf
         self.db_name = db_name
         self.batch_number = batch_number
+        self.config = config
         self.batch_dir = "staging/" + self.sf + "/Batch" + str(self.batch_number) + "/"
 
         # Construct base mysql command (set host, port, and user)
-        TPCDI_Loader.BASE_MYSQL_CMD = "mysql -h " + config['MEMSQL_SERVER']['memsql_host'] + " -u " + \
-                                      config['MEMSQL_SERVER']['memsql_user'] + " -pAli123@@@ -P " + \
+        TPCDI_Loader.BASE_MYSQL_CMD = "mysql -h " + config['MEMSQL_SERVER']['memsql_host'] + " -u" + \
+                                      config['MEMSQL_SERVER']['memsql_user'] + " -p" + \
+                                      config['MEMSQL_SERVER']['memsql_pswd'] + " -P" + \
                                       config['MEMSQL_SERVER']['memsql_port']
 
         # Drop database if it is exist and overwrite param is set to True
@@ -49,6 +57,11 @@ class TPCDI_Loader():
         # Enable infile load
         batch_date_ddl = "SET GLOBAL local_infile=1;"
         batch_date_creation_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -e \"" + batch_date_ddl + "\""
+        os.system(batch_date_creation_cmd)
+
+        # Enable infile load
+        sql_model_ddl = "SET GLOBAL sql_mode = 'NO_ENGINE_SUBSTITUTION';"
+        batch_date_creation_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -e \"" + sql_model_ddl + "\""
         os.system(batch_date_creation_cmd)
 
     def load_current_batch_date(self):
@@ -1001,9 +1014,9 @@ class TPCDI_Loader():
         # Create query to load text data into dim_company table
         dim_company_load_query = """
       INSERT INTO DimCompany (CompanyID,Status,Name,Industry,SPrating,isLowGrade,CEO,AddressLine1,AddressLine2,PostalCode,City,StateProv,Country,Description,FoundingDate,IsCurrent,BatchID,EffectiveDate,EndDate)
-      SELECT C.CIK,S.ST_NAME, C.COMPANY_NAME, I.IN_NAME,C.SP_RATING, IF(LEFT(C.SP_RATING,1)='A' OR LEFT (C.SP_RATING,3)='BBB','FALSE','TRUE'),
+      SELECT C.CIK,S.ST_NAME, C.COMPANY_NAME, I.IN_NAME,C.SP_RATING, IF(LEFT(C.SP_RATING,1)='A' OR LEFT (C.SP_RATING,3)='BBB',FALSE,TRUE),
             C.CEO_NAME, C.ADDR_LINE_1,C.ADDR_LINE_2, C.POSTAL_CODE, C.CITY, C.STATE_PROVINCE, C.COUNTRY, C.DESCRIPTION,
-            STR_TO_DATE(FOUNDING_DATE,'%Y%m%d'),TRUE, 1, STR_TO_DATE(LEFT(C.PTS,8),'%Y%m%d'), STR_TO_DATE('99991231','%Y%m%d')
+            STR_TO_DATE(C.FOUNDING_DATE,'%Y%m%d'),TRUE, 1, STR_TO_DATE(LEFT(C.PTS,8),'%Y%m%d'), STR_TO_DATE('99991231','%Y%m%d')
       FROM S_Company C
       JOIN Industry I ON C.INDUSTRY_ID = I.IN_ID
       JOIN StatusType S ON C.STATUS = S.ST_ID;
@@ -1037,6 +1050,379 @@ class TPCDI_Loader():
         os.system(dim_company_ddl_cmd)
         os.system(dim_company_load_cmd)
         os.system(dim_company_sdc_cmd)
+
+    def transform_s_customer(self, tax_rate):
+
+        NULL = ""
+
+        conn = get_mysql_conn(self.db_name, self.config)
+        query = "SELECT * FROM S_customer"
+        s_customer = pd.read_sql(query, conn)
+        conn.close()
+
+        df_customers = pd.DataFrame(
+            columns=["CustomerID", "TaxID", "Status", "LastName", "FirstName", "MiddleInitial", "Gender", "Tier", "DOB",
+                     "AddressLine1", "AddressLine2", "PostalCode", "City", "StateProv", "Country", "Phone1", "Phone2",
+                     "Phone3", "Email1", "Email2", "NationalTaxRateDesc", "NationalTaxRate", "LocalTaxRateDesc",
+                     "LocalTaxRate", "AgencyID", "CreditRating", "NetWorth", "MarketingNameplate", "IsCurrent",
+                     "BatchID",
+                     "EffectiveDate", "EndDate"])
+
+        df_messages = pd.DataFrame(columns=["BatchID", "MessageSource", "MessageText", "MessageType", "MessageData"])
+
+        updates = {}
+
+        for index, row in s_customer.iterrows():
+            action_type = row["ActionType"]
+            if action_type in ["NEW", "UPDCUST"]:
+                nrow = {
+                    "CustomerID": row['C_ID'],
+                    "EffectiveDate": row["ActionTS"][:10],
+                    "TaxID": row['C_TAX_ID'],
+
+                    "LastName": row["C_L_NAME"],
+                    "FirstName": row["C_F_NAME"],
+                    "MiddleInitial": row["C_M_NAME"],
+
+                    "Gender": row['C_GNDR'],
+                    "Tier": row['C_TIER'],
+                    "DOB": row['C_DOB'],
+
+                    "AddressLine1": row["C_ADLINE1"],
+                    "AddressLine2": row["C_ADLINE2"],
+                    "PostalCode": row["C_ZIPCODE"],
+                    "City": row["C_CITY"],
+                    "StateProv": row["C_STATE_PROV"],
+                    "Country": row["C_CTRY"],
+
+                    "Phone1": get_cust_phone(1, row),
+                    "Phone2": get_cust_phone(2, row),
+                    "Phone3": get_cust_phone(3, row),
+                    "Email1": row["C_PRIM_EMAIL"],
+                    "Email2": row["C_ALT_EMAIL"],
+                }
+
+                if nrow["Gender"] is not None and nrow["Gender"] != NULL:
+                    nrow["Gender"] = nrow["Gender"].upper()
+                    if nrow["Gender"] not in ["F", "M"]:
+                        nrow["Gender"] = "U"
+
+                nat_tax_id = row["C_NAT_TX_ID"]
+                if nat_tax_id:
+                    nrow["NationalTaxRateDesc"] = tax_rate[tax_rate.TX_ID == nat_tax_id]["TX_NAME"].iloc[0]
+                    nrow["NationalTaxRate"] = tax_rate[tax_rate.TX_ID == nat_tax_id]["TX_RATE"].iloc[0]
+
+                lcl_tax_id = row["C_LCL_TX_ID"]
+                if lcl_tax_id:
+                    nrow["LocalTaxRateDesc"] = tax_rate[tax_rate.TX_ID == nat_tax_id]["TX_NAME"].iloc[0]
+                    nrow["LocalTaxRate"] = tax_rate[tax_rate.TX_ID == nat_tax_id]["TX_RATE"].iloc[0]
+
+                if action_type == "NEW":
+                    nrow["Status"] = "ACTIVE"
+                    nrow["IsCurrent"] = True
+                    nrow["BatchID"] = 1
+                    nrow["EndDate"] = "9999-12-31"
+                    df_new = pd.DataFrame(nrow, index=[0])
+                    df_new.fillna(np.nan, inplace=True)
+                    df_customers = df_customers.append(nrow, ignore_index=True)
+
+                elif action_type == "UPDCUST":
+                    if nrow["CustomerID"] not in updates:
+                        updates[nrow["CustomerID"]] = []
+                    updates[nrow["CustomerID"]].append(nrow)
+
+                if "Tier" in nrow and nrow["Tier"] is not None and nrow["Tier"] != NULL:
+                    if nrow["Tier"] not in ["1", "2", "3"]:
+                        df_messages = df_messages.append({
+                            "BatchID": 1,
+                            "MessageSource": "DimCustomer",
+                            "MessageType": "Alert",
+                            "MessageText": "Invalid customer tier",
+                            "MessageData": "C_ID = " + str(nrow["CustomerID"]) + ", C_TIER = " + str(nrow["Tier"])
+                        }, ignore_index=True)
+
+                if "DOB" in nrow and nrow["DOB"] is not None and nrow["DOB"] != NULL:
+                    ds = open(self.batch_dir + "BatchDate.txt").read()[:-1]
+                    batch_date = datetime.strptime(ds, "%Y-%m-%d").date()
+                    min_date = date(batch_date.year - 100, batch_date.month, batch_date.day)
+                    dob = nrow["DOB"]
+
+                    if dob < min_date or dob > batch_date:
+                        df_messages = df_messages.append({
+                            "BatchID": 1,
+                            "MessageSource": "DimCustomer",
+                            "MessageType": "Alert",
+                            "MessageText": "DOB out of range",
+                            "MessageData": "C_ID = " + str(nrow["CustomerID"]) + ", C_DOB = " + str(nrow["DOB"])
+                        }, ignore_index=True)
+
+            elif action_type == "INACT":
+                customer_id = row['C_ID']
+                action_ts = row["ActionTS"][:10]
+
+                if customer_id not in updates:
+                    updates[customer_id] = []
+                updates[customer_id].append(
+                    {"CustomerID": customer_id, "EffectiveDate": action_ts, "Status": "INACTIVE"})
+
+        for c_id, upds in updates.items():
+            for upda in upds:
+                action_ts = upda["EffectiveDate"]
+                old_index = df_customers[(df_customers.CustomerID == c_id) & df_customers.IsCurrent].index.values[0]
+                new_row = df_customers.loc[old_index, :].copy()
+
+                df_customers.loc[old_index, "IsCurrent"] = False
+                df_customers.loc[old_index, "EndDate"] = action_ts
+
+                for attrib, value in upda.items():
+                    if value is not None:
+                        if value == "":
+                            new_row[attrib] = np.nan
+                        else:
+                            new_row[attrib] = value
+
+                df_customers = df_customers.append(new_row, ignore_index=True)
+        return df_customers, df_messages
+
+    def load_target_dim_customer(self):
+        dim_customer_ddl = """
+        
+        USE """ + self.db_name + """;
+
+        CREATE TABLE DimCustomer (
+            SK_CustomerID NUMERIC(11) NOT NULL PRIMARY KEY,
+            CustomerID INTEGER NOT NULL,
+            TaxID CHAR(20) NOT NULL,
+            Status CHAR(10) NOT NULL,
+            LastName CHAR(30) NOT NULL,
+            FirstName CHAR(30) NOT NULL,
+            MiddleInitial CHAR(1),
+            Gender CHAR(1),
+            Tier NUMERIC(1),
+            DOB DATE NOT NULL,
+            AddressLine1 CHAR(80) NOT NULL,
+            AddressLine2 CHAR(80),
+            PostalCode CHAR(12) NOT NULL,
+            City CHAR(25) NOT NULL,
+            StateProv CHAR(20) NOT NULL,
+            Country CHAR(24),
+            Phone1 CHAR(30),
+            Phone2 CHAR(30),
+            Phone3 CHAR(30),
+            Email1 CHAR(50),
+            Email2 CHAR(50),
+            NationalTaxRateDesc CHAR(50),
+            NationalTaxRate NUMERIC(6,5),
+            LocalTaxRateDesc CHAR(50),
+            LocalTaxRate NUMERIC(6,5),
+            AgencyID CHAR(30),
+            CreditRating NUMERIC(5),
+            NetWorth NUMERIC(10),
+            MarketingNameplate CHAR(100),
+            IsCurrent BOOLEAN NOT NULL,
+            BatchID NUMERIC(5) NOT NULL,
+            EffectiveDate DATE NOT NULL,
+            EndDate DATE NOT NULL
+        );
+        """
+        dim_customer_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + dim_customer_ddl + "\""
+
+        # Execute the command
+        os.system(dim_customer_ddl_cmd)
+
+        NULL = ""
+        conn = get_mysql_conn(self.db_name, self.config)
+        query = "SELECT * FROM TaxRate"
+        tax_rate = pd.read_sql(query, conn)
+        conn.close()
+
+        conn = get_mysql_conn(self.db_name, self.config)
+        query = "SELECT * FROM Prospect"
+        prospect = pd.read_sql(query, conn)
+        conn.close()
+
+        prospect["key"] = prospect.apply(lambda row: ''.join([
+            pd.notna(row["LastName"]) and str(row["LastName"]) or NULL,
+            pd.notna(row["FirstName"]) and str(row["FirstName"]) or NULL,
+            pd.notna(row["AddressLine1"]) and str(row["AddressLine1"]) or NULL,
+            pd.notna(row["AddressLine2"]) and str(row["AddressLine2"]) or NULL,
+            pd.notna(row["PostalCode"]) and str(row["PostalCode"]) or NULL]), axis=1)
+
+        prospect["key"] = prospect["key"].apply(lambda x: x.upper())
+        prospect = prospect.set_index("key")
+
+        df_customers, df_messages = self.transform_s_customer(tax_rate)
+
+        df_customers["ProspectKey"] = df_customers["LastName"].apply(to_upper) + \
+                                      df_customers["FirstName"].apply(to_upper) + \
+                                      df_customers["AddressLine1"].apply(to_upper) + \
+                                      df_customers["AddressLine2"].apply(to_upper) + \
+                                      df_customers["PostalCode"].apply(to_upper)
+
+        df_customers["AgencyID"] = df_customers.apply(lambda x: get_prospect(x, prospect)[0], axis=1)
+        df_customers["CreditRating"] = df_customers.apply(lambda x: get_prospect(x, prospect)[1], axis=1)
+        df_customers["NetWorth"] = df_customers.apply(lambda x: get_prospect(x, prospect)[2], axis=1)
+        df_customers["MarketingNameplate"] = df_customers.apply(lambda x: get_prospect(x, prospect)[3], axis=1)
+        df_customers.drop("ProspectKey", inplace=True, axis=1)
+        df_customers.replace("", np.nan, inplace=True)
+        df_customers["SK_CustomerID"] = df_customers.index
+
+        con = get_mysql_engine(self.db_name, self.config)
+        df_customers.to_sql("DimCustomer", index=False, if_exists="append", con=con)
+
+    def load_target_dim_account(self):
+
+        conn = get_mysql_conn(self.db_name, self.config)
+        query = "SELECT * FROM S_customer"
+        s_customer = pd.read_sql(query, conn)
+        conn.close()
+        s_customer = s_customer[['ActionType', 'ActionTS', 'C_ID', 'CA_ID', 'CA_TAX_ST', 'CA_B_ID', 'CA_NAME']]
+        s_customer.set_index('CA_ID', inplace=True)
+
+        conn = get_mysql_conn(self.db_name,self.config)
+        query = "SELECT SK_BROKERID, BrokerID FROM DimBroker"
+        dim_broker = pd.read_sql(query, conn)
+        conn.close()
+        dim_broker.set_index('SK_BROKERID', inplace=True)
+
+        conn = get_mysql_conn(self.db_name, self.config)
+        query = "SELECT SK_CustomerID, CustomerID, EffectiveDate, EndDate FROM DimCustomer"
+        dim_customer = pd.read_sql(query, conn)
+        dim_customer.SK_CustomerID = dim_customer.SK_CustomerID.astype('int64')
+        conn.close()
+        dim_customer.set_index('SK_CustomerID', inplace=True)
+
+        columns = ['AccountID', 'SK_BrokerID', 'SK_CustomerID',
+                   'Status', 'AccountDesc', 'TaxStatus', 'IsCurrent',
+                   'BatchID', 'EffectiveDate', 'EndDate']
+        dim_account = pd.DataFrame(columns=columns)
+        nrow = dict()
+
+        for index, row in s_customer.iterrows():
+
+            action_type = row['ActionType']
+            if action_type in ["NEW", "ADDACT"]:
+
+                nrow['AccountID'] = index
+                nrow['AccountDesc'] = row.CA_NAME
+                nrow['TaxStatus'] = row.CA_TAX_ST
+                nrow['EffectiveDate'] = row.ActionTS[:10]
+                nrow['EndDate'] = "9999-12-31"
+                nrow['IsCurrent'] = 1
+                nrow['BatchID'] = 1
+                nrow['Status'] = 'Active'
+
+                r = dim_broker.loc[dim_broker['BrokerID'] == row.CA_B_ID]
+                if r.shape[0] > 0:
+                    nrow['SK_BrokerID'] = r.index[0]
+
+                r = dim_customer[(dim_customer['CustomerID'] == row.C_ID) &
+                                 (dim_customer['EffectiveDate'] <= datetime.strptime(row.ActionTS[:10],
+                                                                                     "%Y-%m-%d").date()) &
+                                 (dim_customer['EndDate'] > datetime.strptime(row.ActionTS[:10], "%Y-%m-%d").date())]
+
+                if r.shape[0] > 0:
+                    nrow['SK_CustomerID'] = r.index[0]
+
+                dim_account = dim_account.append(nrow, ignore_index=True)
+
+            elif action_type == "UPDACCT":
+                new_account = dim_account[dim_account['AccountID'] == index].tail(1).copy()
+                old_account = new_account.copy()
+                new_account['EffectiveDate'] = row.ActionTS[:10]
+                new_account['EndDate'] = "9999-12-31"
+
+                for field in row.index:
+                    if row[field] is None:
+                        continue
+
+                    if field == 'C_ID':
+                        r = dim_customer[(dim_customer['CustomerID'] == row.C_ID) &
+                                         (dim_customer['EffectiveDate'] <= datetime.strptime(row.ActionTS[:10],
+                                                                                             "%Y-%m-%d").date()) &
+                                         (dim_customer['EndDate'] > datetime.strptime(row.ActionTS[:10],
+                                                                                      "%Y-%m-%d").date())]
+
+                        if r.shape[0] > 0:
+                            new_account['SK_CustomerID'] = r.index[0]
+
+                    if field == 'CA_TAX_ST':
+                        new_account['TaxStatus'] = row.CA_TAX_ST
+
+                    if field == 'CA_B_ID':
+                        r = dim_broker.loc[dim_broker['BrokerID'] == row.CA_B_ID]
+
+                        if r.shape[0] > 0:
+                            new_account['SK_BrokerID'] = r.index[0]
+
+                    if field == 'CA_NAME':
+                        new_account['AccountDesc'] = row.CA_NAME
+
+                old_account['EndDate'] = row.ActionTS[:10]
+                old_account['IsCurrent'] = 0
+                dim_account.update(old_account)
+                dim_account = dim_account.append(new_account, ignore_index=True)
+
+            elif action_type == 'CLOSEACCT':
+                new_accounts = dim_account[dim_account['AccountID'] == index].tail(1).copy()
+                old_accounts = new_accounts.copy()
+                new_accounts['EffectiveDate'] = row.ActionTS[:10]
+                new_accounts['Status'] = 'INACTIVE'
+                old_accounts['EndDate'] = row.ActionTS
+                dim_account.update(old_accounts)
+                dim_account = dim_account.append(new_accounts, ignore_index=True)
+
+            elif action_type == 'UPDCUST':
+
+                customer = dim_customer[(dim_customer['CustomerID'] == row.C_ID) & (
+                        (dim_customer['EffectiveDate'] == datetime.strptime(row.ActionTS[:10], "%Y-%m-%d").date()) |
+                        (dim_customer['EndDate'] == datetime.strptime(row.ActionTS[:10], "%Y-%m-%d").date()))]
+
+                if customer.empty:
+                    continue
+
+                old_accounts = dim_account[dim_account['SK_CustomerID'] == customer.head(1).index[0]].copy()
+                new_accounts = old_accounts.copy()
+                new_accounts.loc[:, 'SK_CustomerID'] = int(customer.tail(1).index[0])
+                new_accounts.loc[:, 'EffectiveDate'] = row.ActionTS[:10]
+                new_accounts.loc[:, 'EndDate'] = "9999-12-31"
+                old_accounts.loc[:, 'EndDate'] = row.ActionTS[:10]
+                dim_account.update(old_accounts)
+                dim_account = dim_account.append(new_accounts, ignore_index=True)
+
+            elif action_type == 'INACT':
+
+                customer = dim_customer[(dim_customer['CustomerID'] == row.C_ID) & (
+                        (dim_customer['EffectiveDate'] == row.ActionTS[:10]) |
+                        (dim_customer['EndDate'] == row.ActionTS[:10]))]
+
+                if customer.empty:
+                    continue
+
+                old_accounts = dim_account[dim_account['SK_CustomerID'] == customer.head(1).index[0]].copy()
+                new_accounts = old_accounts.copy()
+                new_accounts.loc[:, 'SK_CustomerID'] = int(customer.tail(1).index[0])
+                new_accounts.loc[:, 'Status'] = 'INACTIVE'
+                new_accounts.loc[:, 'IsCurrent'] = 0
+                new_accounts.loc[:, 'EffectiveDate'] = row.ActionTS[:10]
+                new_accounts.loc[:, 'EndDate'] = "9999-12-31"
+                old_accounts.loc[:, 'EndDate'] = row.ActionTS[:10]
+
+                dim_account.update(old_accounts)
+                dim_account = dim_account.append(new_accounts, ignore_index=True)
+
+        dim_account.index.name = 'SK_AccountID'
+        dim_account.fillna(value={'SK_BrokerID': -1}, inplace=True)
+
+        dim_account['SK_CustomerID'] = dim_account['SK_CustomerID'].astype('int32')
+        dim_account['SK_BrokerID'] = dim_account['SK_BrokerID'].astype('int32')
+        dim_account.index.astype('int32', copy=False)
+        dim_account['AccountID'] = dim_account['AccountID'].astype('int32')
+        dim_account['BatchID'] = dim_account['BatchID'].astype('int32')
+        dim_account['IsCurrent'] = dim_account['IsCurrent'].astype('int32')
+
+        con = get_mysql_engine(self.db_name,self.config)
+        dim_account.to_sql("DimAccount", index=False, if_exists="append", con=con)
 
     def load_target_fact_cash_balance(self):
         """
