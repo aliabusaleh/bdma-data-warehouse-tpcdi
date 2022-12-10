@@ -2,9 +2,10 @@ import os
 import glob
 import numpy as np
 import pandas as pd
-from pandas.io import sql
 from datetime import datetime, date
 import xmltodict
+import warnings
+warnings.filterwarnings('ignore')
 
 from utils import prepare_char_insertion, prepare_numeric_insertion, get_mysql_conn, get_cust_phone, to_upper, get_mysql_engine, get_prospect
 
@@ -35,8 +36,6 @@ class TPCDI_Loader():
                                       config['MEMSQL_SERVER']['memsql_user'] + " -p" + \
                                       config['MEMSQL_SERVER']['memsql_pswd'] + " -P" + \
                                       config['MEMSQL_SERVER']['memsql_port']
-
-        print(TPCDI_Loader.BASE_MYSQL_CMD)
 
         # Drop database if it is exist and overwrite param is set to True
         if overwrite:
@@ -1052,7 +1051,7 @@ class TPCDI_Loader():
         os.system(dim_company_load_cmd)
         os.system(dim_company_sdc_cmd)
 
-    def preprocess_s_customer(self, tax_rate):
+    def transform_s_customer(self, tax_rate):
 
         NULL = ""
 

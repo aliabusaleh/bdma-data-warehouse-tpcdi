@@ -35,38 +35,63 @@ if __name__ == "__main__":
             loader = TPCDI_Loader(options.scalefactor, options.dbname, config, batch_number, overwrite=True)
 
             # Step 1: Load the batchDate table for this batch
+            print("+--------------Going to Load Batch Date--------------------+")
             loader.load_current_batch_date()
+            print("+--------------Batch Loading Completed---------------------+")
         
             # Step 2: Load non-dependence tables
             loader.load_dim_date()
+            print("+-------------------DimDate Loaded-------------------------+")
             loader.load_dim_time()
+            print("+-------------------DimTime Loaded-------------------------+")
             loader.load_industry()
+            print("+-------------------Industry Loaded------------------------+")
             loader.load_status_type()
+            print("+-------------------StatusType Loaded----------------------+")
             loader.load_tax_rate()
+            print("+-------------------TaxRate Loadedd------------------------+")
             loader.load_trade_type()
+            print("+-------------------TradeType Loaded-----------------------+")
             loader.load_audit()
+            print("+-------------------Audit Loaded---------------------------+")
             loader.init_di_messages()
-            
+            print("+---------------DImessage initialized----------------------+")
+
             # Step 3: Load staging tables
+            print("+---------Loading Finware Data to Staging Table------------+")
             loader.load_staging_finwire()
+            print("+---------Loading Porspect Data to Staging Table-----------+")
             loader.load_staging_prospect()
+            print("+---------Loading Broker Data to Staging Table-------------+")
             loader.load_staging_broker()
+            print("+---------Loading Customer Data to Staging Table-----------+")
             loader.load_staging_customer()
+            print("+-------Loading CashBalance Data to Staging Table----------+")
             loader.load_staging_cash_balances()
+            print("+---------Loading Watches Data to Staging Table------------+")
             loader.load_staging_watches()
+            print("+-------Loading FactHolding Data to Staging Table----------+")
             loader.load_staging_fact_holding()
-        
+
             # Step 4: Load dependant table
             loader.load_target_dim_company()
+            print("+-------------------DimCompany Loaded----------------------+")
             loader.load_target_financial()
+            print("+-----------------Financial Table Loaded-------------------+")
             loader.load_target_dim_security()
+            print("+-------------------DimSecurity Loaded---------------------+")
             loader.load_prospect()
+            print("+------------------Prospect Table Loaded-------------------+")
             loader.load_broker()
+            print("+-------------------DimBroker Loaded-----------------------+")
             loader.load_target_dim_customer()
+            print("+-------------------DimCustomer Loaded---------------------+")
             # it has to be loaded after DimAccount
             loader.load_target_fact_cash_balance()
+            print("+-----------------FactCashBalance Loaded-------------------+")
             # it has to be loaded after DimTrade
             loader.load_target_fact_holding()
+            print("+-------------------FactHolding Loaded---------------------+")
 
     end = time.time()
     print(end-start)

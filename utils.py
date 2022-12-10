@@ -1,11 +1,7 @@
-import operator
 import tempfile
 import os
-import string
-import random
-from contextlib import ExitStack 
+from contextlib import ExitStack
 from heapq import merge
-import configparser
 from sqlalchemy import create_engine
 import mysql.connector as connection
 import numpy as np
@@ -24,6 +20,36 @@ class CSV_Transformer():
         return line.split(self.delimiter)
     def inverse_transform(self, transformed):
         return self.delimiter.join(transformed)
+def get_marketing_nameplate(row):
+    net_worth = row["NetWorth"]
+    income = row["Income"]
+    num_children = row["NumberChildren"]
+    num_credit_cards = row["NumberCreditCards"]
+    age = row["Age"]
+    credit_rating = row["CreditRating"]
+    num_cars = row["NumberCars"]
+
+    result = []
+
+    if net_worth and net_worth > 1000000 or income and income > 200000:
+        result.append('HighValue')
+
+    if num_children and num_children > 3 or num_credit_cards and num_credit_cards > 5:
+        result.append('Expenses')
+
+    if age and age > 45:
+        result.append('Boomer')
+
+    if income and income < 50000 or credit_rating and credit_rating < 600 or net_worth and net_worth < 100000:
+        result.append('MoneyAlert')
+
+    if num_cars and num_cars > 3 or num_credit_cards and num_credit_cards > 7:
+        result.append('Spender')
+
+    if age and age < 25 and net_worth and net_worth > 1000000:
+        result.append('Inherited')
+
+    return '+'.join(result)
 
 def get_prospect(c, df_prospect):
     if c["IsCurrent"] and c["ProspectKey"] in df_prospect.index:
@@ -79,7 +105,7 @@ def to_upper(value):
 def prepare_char_insertion(field):
     if field is None:
         return "''"
-    if field is "''":
+    if field == "''":
         return field
     field = field.replace("'", "''")
     field = field.replace('"', '\\"')
@@ -100,7 +126,7 @@ def external_sort(input_file, transformer, col_idx, max_chunk_size=50):
         transformer (obj): Instance of a row-to-list transformer class.
         col_idx (int): Index of the list column used for sorting.
         max_chunk_size (int): Maximum number of lines contained in a chunk file.
-        on_finished (fun): Function to be executed with the outputfile as parameter when the sorting is finished.
+        #on_finished (fun): Function to be executed with the outputfile as parameter when the sorting is finished.
 
     WARNING: This will perform inplace operation, sorted version of the file will be written in the input file
     """
