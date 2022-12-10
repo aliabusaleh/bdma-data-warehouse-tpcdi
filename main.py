@@ -54,6 +54,7 @@ if __name__ == "__main__":
             loader.load_staging_customer()
             loader.load_staging_cash_balances()
             loader.load_staging_watches()
+            loader.load_staging_fact_holding()
         
             # Step 4: Load dependant table
             loader.load_target_dim_company()
@@ -63,6 +64,8 @@ if __name__ == "__main__":
             loader.load_broker()
             # it has to be loaded after DimAccount
             loader.load_target_fact_cash_balance()
+            # it has to be loaded after DimTrade
+            loader.load_target_fact_holding()
 
     end = time.time()
     print(end-start)

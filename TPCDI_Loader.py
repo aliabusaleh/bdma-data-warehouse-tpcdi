@@ -1054,7 +1054,7 @@ class TPCDI_Loader():
             BatchID numeric(5) Not NULL
           );
         """
-        dim_company_load_query = """
+        fact_cash_balance_load_query = """
               INSERT INTO FactCashBalances (SK_CustomerID,SK_AccountID,SK_DateID,Cash,BatchID)
               SELECT C.CT_CA_ID, A.SK_AccountID, D.SK_DateID , C.CT_AMT , 1
               FROM S_Cash_Balances C
@@ -1063,6 +1063,13 @@ class TPCDI_Loader():
               where A.IsCurrent = true
               ON DUPLICATE KEY UPDATE Cash = (Cash + C.CT_AMT);
             """
+        # Construct mysql client bash command to execute ddl and data loading query
+        fact_cash_balance_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + fact_cash_balance_ddl + "\""
+        fact_cash_balance_load_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " --local-infile=1 -D " + self.db_name + " -e \"" + fact_cash_balance_load_query + "\""
+
+        # Execute the command
+        os.system(fact_cash_balance_ddl_cmd)
+        os.system(fact_cash_balance_load_cmd)
 
     def load_target_dim_security(self):
         """
@@ -1270,3 +1277,72 @@ class TPCDI_Loader():
         # Execute the command
         os.system(tade_ddl_cmd)
         os.system(tade_load_cmd)
+
+    def load_staging_fact_holding(self):
+        """
+    Create s_fact_holding table in the staging database and then load rows in HoldingHistory.txt into it.
+    """
+
+        # Create ddl to store watches
+        holding_ddl = """
+       USE """ + self.db_name + """;
+
+       CREATE TABLE s_fact_holding(
+         HH_H_T_ID INTEGER NOT NULL,
+         HH_T_ID INTEGER NOT NULL,
+         HH_BEFORE_QTY INTEGER NOT NULL,
+         HH_AFTER_QTY INTEGER NOT NULL
+       );
+       """
+
+        # Create query to load text data into prospect table
+        holding_load_query = "LOAD DATA LOCAL INFILE 'staging/" + self.sf + "/Batch1/HoldingHistory.txt' INTO TABLE s_fact_holding COLUMNS TERMINATED BY '|';"
+
+        # Construct mysql client bash command to execute ddl and data loading query
+        holding_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + holding_ddl + "\""
+        holding_load_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " --local-infile=1 -D " + self.db_name + " -e \"" + holding_load_query + "\""
+
+        # Execute the command
+        os.system(holding_ddl_cmd)
+        os.system(holding_load_cmd)
+
+    def load_target_fact_holding(self):
+        """
+        create FactHoldings table
+         """
+        # Create ddl to store tradeType
+        fact_holding_ddl = """
+               USE """ + self.db_name + """;
+
+               CREATE TABLE FactHoldings (
+                   TradeID INTEGER NOT NULL PRIMARY KEY,
+                   CurrentTradeID INTEGER NOT NULL PRIMARY KEY,
+                   SK_CustomerID INTEGER NOT NULL,
+                   SK_AccountID INTEGER NOT NULL,
+                   SK_SecurityID INTEGER NOT NULL,
+                   SK_CompanyID INTEGER NOT NULL,
+                   SK_DateID INTEGER Not NULL,
+                   SK_TimeID INTEGER Not NULL,
+                   CurrentPrice INTEGER Not NULL,
+                   CurrentHolding INTEGER(6) Not NULL,
+                   BatchID numeric(5) Not NULL
+                 );
+               """
+        fact_holding_load_query = """
+                     INSERT INTO FactHoldings (TradeID,CurrentTradeID,SK_CustomerID,SK_AccountID,
+                                                SK_SecurityID, SK_CompanyID, SK_DateID, SK_TimeID, CurrentPrice,
+                                                CurrentHolding, BatchID)
+                     SELECT F.HH_H_T_ID, F.HH_T_ID, T.SK_CustomerID, T.SK_AccountID, 
+                     T.SK_SecurityID, T.SK_CompanyID, T.SK_CloseDateID, T.SK_CloseTimeID, T.TradePrice, \
+                     F.HH_AFTER_QTY, 1
+                     FROM s_fact_holding F
+                     JOIN DimTrade T ON F.HH_T_ID = T.TradeID;
+                   """
+
+        # Construct mysql client bash command to execute ddl and data loading query
+        fact_holding_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + fact_holding_ddl + "\""
+        fact_holding_load_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " --local-infile=1 -D " + self.db_name + " -e \"" + fact_holding_load_query + "\""
+
+        # Execute the command
+        os.system(fact_holding_ddl_cmd)
+        os.system(fact_holding_load_cmd)
