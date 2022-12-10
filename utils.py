@@ -5,6 +5,10 @@ import string
 import random
 from contextlib import ExitStack 
 from heapq import merge
+import configparser
+from sqlalchemy import create_engine
+import mysql.connector as connection
+import numpy as np
 
 
 class CSV_Transformer():
@@ -21,6 +25,57 @@ class CSV_Transformer():
     def inverse_transform(self, transformed):
         return self.delimiter.join(transformed)
 
+def get_prospect(c, df_prospect):
+    if c["IsCurrent"] and c["ProspectKey"] in df_prospect.index:
+        row = df_prospect.loc[c["ProspectKey"]]
+        return [row["AgencyID"], row["CreditRating"], row["NetWorth"], get_marketing_nameplate(row)]
+    else:
+        return [np.nan, np.nan, np.nan, np.nan]
+
+def get_mysql_conn(db_name,config):
+    conn = connection.connect(host=config['MEMSQL_SERVER']['memsql_host'],
+                              database=db_name,
+                              user=config['MEMSQL_SERVER']['memsql_user'],
+                              password=config['MEMSQL_SERVER']['memsql_pswd'])
+    return conn
+
+def get_mysql_engine(db_name,config):
+    conn = connection.connect(host=config['MEMSQL_SERVER']['memsql_host'],
+                              database=db_name,
+                              user=config['MEMSQL_SERVER']['memsql_user'],
+                              password=config['MEMSQL_SERVER']['memsql_pswd'])
+    engine_str = "mysql+pymysql://" + config['MEMSQL_SERVER']['memsql_user'] + ":"
+    engine_str = engine_str + config['MEMSQL_SERVER']['memsql_pswd'] + "@"
+    engine_str = engine_str + config['MEMSQL_SERVER']['memsql_host'] + "/" + db_name
+    engine = create_engine(engine_str)
+    con = engine.connect()
+    return con
+
+def get_cust_phone(n, row):
+    c_e = row["C_PHONE_" + str(n) + "_C_EXT"]
+    c_l = row["C_PHONE_" + str(n) + "_C_LOCAL"]
+    c_ac = row["C_PHONE_" + str(n) + "_C_AREA_CODE"]
+    c_cc = row["C_PHONE_" + str(n) + "_C_CTRY_CODE"]
+
+    if c_cc and c_ac and c_l:
+        phone = '+' + c_cc + ' (' + c_ac + ') ' + c_l
+    elif c_ac and c_l:
+        phone = '(' + c_ac + ') ' + c_l
+    elif c_l:
+        phone = c_l
+    else:
+        return ""
+
+    if c_e:
+        return phone + c_e
+
+    return phone
+
+def to_upper(value):
+    if value != np.nan:
+        return str(value).upper()
+    return ""
+
 def prepare_char_insertion(field):
     if field is None:
         return "''"
@@ -35,7 +90,7 @@ def prepare_numeric_insertion(numeric):
         int(numeric)
         return numeric
     except:
-        return "''"
+        return "NULL"
 
 def external_sort(input_file, transformer, col_idx, max_chunk_size=50):
     """

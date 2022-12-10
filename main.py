@@ -47,7 +47,7 @@ if __name__ == "__main__":
             loader.load_audit()
             loader.init_di_messages()
             
-            # # Step 3: Load staging tables
+            # Step 3: Load staging tables
             loader.load_staging_finwire()
             loader.load_staging_prospect()
             loader.load_staging_broker()
@@ -62,6 +62,7 @@ if __name__ == "__main__":
             loader.load_target_dim_security()
             loader.load_prospect()
             loader.load_broker()
+            loader.load_target_dim_customer()
             # it has to be loaded after DimAccount
             loader.load_target_fact_cash_balance()
             # it has to be loaded after DimTrade
