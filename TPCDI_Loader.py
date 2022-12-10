@@ -1271,6 +1271,7 @@ class TPCDI_Loader():
         con = get_mysql_engine(self.db_name, self.config)
         df_customers.to_sql("DimCustomer", index=False, if_exists="append", con=con)
 
+    #TODO: ADD DDL to Dim Account, Insert DImessages as well
     def load_target_dim_account(self):
 
         conn = get_mysql_conn(self.db_name, self.config)
