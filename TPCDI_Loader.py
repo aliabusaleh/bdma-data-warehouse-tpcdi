@@ -1270,6 +1270,160 @@ class TPCDI_Loader():
         con = get_mysql_engine(self.db_name, self.config)
         df_customers.to_sql("DimCustomer", index=False, if_exists="append", con=con)
 
+    def load_target_dim_account(self):
+
+        conn = get_mysql_conn(self.db_name, self.config)
+        query = "SELECT * FROM S_customer"
+        s_customer = pd.read_sql(query, conn)
+        conn.close()
+        s_customer = s_customer[['ActionType', 'ActionTS', 'C_ID', 'CA_ID', 'CA_TAX_ST', 'CA_B_ID', 'CA_NAME']]
+        s_customer.set_index('CA_ID', inplace=True)
+
+        conn = get_mysql_conn(self.db_name,self.config)
+        query = "SELECT SK_BROKERID, BrokerID FROM DimBroker"
+        dim_broker = pd.read_sql(query, conn)
+        conn.close()
+        dim_broker.set_index('SK_BROKERID', inplace=True)
+
+        conn = get_mysql_conn(self.db_name, self.config)
+        query = "SELECT SK_CustomerID, CustomerID, EffectiveDate, EndDate FROM DimCustomer"
+        dim_customer = pd.read_sql(query, conn)
+        dim_customer.SK_CustomerID = dim_customer.SK_CustomerID.astype('int64')
+        conn.close()
+        dim_customer.set_index('SK_CustomerID', inplace=True)
+
+        columns = ['AccountID', 'SK_BrokerID', 'SK_CustomerID',
+                   'Status', 'AccountDesc', 'TaxStatus', 'IsCurrent',
+                   'BatchID', 'EffectiveDate', 'EndDate']
+        dim_account = pd.DataFrame(columns=columns)
+        nrow = dict()
+
+        for index, row in s_customer.iterrows():
+
+            action_type = row['ActionType']
+            if action_type in ["NEW", "ADDACT"]:
+
+                nrow['AccountID'] = index
+                nrow['AccountDesc'] = row.CA_NAME
+                nrow['TaxStatus'] = row.CA_TAX_ST
+                nrow['EffectiveDate'] = row.ActionTS[:10]
+                nrow['EndDate'] = "9999-12-31"
+                nrow['IsCurrent'] = 1
+                nrow['BatchID'] = 1
+                nrow['Status'] = 'Active'
+
+                r = dim_broker.loc[dim_broker['BrokerID'] == row.CA_B_ID]
+                if r.shape[0] > 0:
+                    nrow['SK_BrokerID'] = r.index[0]
+
+                r = dim_customer[(dim_customer['CustomerID'] == row.C_ID) &
+                                 (dim_customer['EffectiveDate'] <= datetime.strptime(row.ActionTS[:10],
+                                                                                     "%Y-%m-%d").date()) &
+                                 (dim_customer['EndDate'] > datetime.strptime(row.ActionTS[:10], "%Y-%m-%d").date())]
+
+                if r.shape[0] > 0:
+                    nrow['SK_CustomerID'] = r.index[0]
+
+                dim_account = dim_account.append(nrow, ignore_index=True)
+
+            elif action_type == "UPDACCT":
+                new_account = dim_account[dim_account['AccountID'] == index].tail(1).copy()
+                old_account = new_account.copy()
+                new_account['EffectiveDate'] = row.ActionTS[:10]
+                new_account['EndDate'] = "9999-12-31"
+
+                for field in row.index:
+                    if row[field] is None:
+                        continue
+
+                    if field == 'C_ID':
+                        r = dim_customer[(dim_customer['CustomerID'] == row.C_ID) &
+                                         (dim_customer['EffectiveDate'] <= datetime.strptime(row.ActionTS[:10],
+                                                                                             "%Y-%m-%d").date()) &
+                                         (dim_customer['EndDate'] > datetime.strptime(row.ActionTS[:10],
+                                                                                      "%Y-%m-%d").date())]
+
+                        if r.shape[0] > 0:
+                            new_account['SK_CustomerID'] = r.index[0]
+
+                    if field == 'CA_TAX_ST':
+                        new_account['TaxStatus'] = row.CA_TAX_ST
+
+                    if field == 'CA_B_ID':
+                        r = dim_broker.loc[dim_broker['BrokerID'] == row.CA_B_ID]
+
+                        if r.shape[0] > 0:
+                            new_account['SK_BrokerID'] = r.index[0]
+
+                    if field == 'CA_NAME':
+                        new_account['AccountDesc'] = row.CA_NAME
+
+                old_account['EndDate'] = row.ActionTS[:10]
+                old_account['IsCurrent'] = 0
+                dim_account.update(old_account)
+                dim_account = dim_account.append(new_account, ignore_index=True)
+
+            elif action_type == 'CLOSEACCT':
+                new_accounts = dim_account[dim_account['AccountID'] == index].tail(1).copy()
+                old_accounts = new_accounts.copy()
+                new_accounts['EffectiveDate'] = row.ActionTS[:10]
+                new_accounts['Status'] = 'INACTIVE'
+                old_accounts['EndDate'] = row.ActionTS
+                dim_account.update(old_accounts)
+                dim_account = dim_account.append(new_accounts, ignore_index=True)
+
+            elif action_type == 'UPDCUST':
+
+                customer = dim_customer[(dim_customer['CustomerID'] == row.C_ID) & (
+                        (dim_customer['EffectiveDate'] == datetime.strptime(row.ActionTS[:10], "%Y-%m-%d").date()) |
+                        (dim_customer['EndDate'] == datetime.strptime(row.ActionTS[:10], "%Y-%m-%d").date()))]
+
+                if customer.empty:
+                    continue
+
+                old_accounts = dim_account[dim_account['SK_CustomerID'] == customer.head(1).index[0]].copy()
+                new_accounts = old_accounts.copy()
+                new_accounts.loc[:, 'SK_CustomerID'] = int(customer.tail(1).index[0])
+                new_accounts.loc[:, 'EffectiveDate'] = row.ActionTS[:10]
+                new_accounts.loc[:, 'EndDate'] = "9999-12-31"
+                old_accounts.loc[:, 'EndDate'] = row.ActionTS[:10]
+                dim_account.update(old_accounts)
+                dim_account = dim_account.append(new_accounts, ignore_index=True)
+
+            elif action_type == 'INACT':
+
+                customer = dim_customer[(dim_customer['CustomerID'] == row.C_ID) & (
+                        (dim_customer['EffectiveDate'] == row.ActionTS[:10]) |
+                        (dim_customer['EndDate'] == row.ActionTS[:10]))]
+
+                if customer.empty:
+                    continue
+
+                old_accounts = dim_account[dim_account['SK_CustomerID'] == customer.head(1).index[0]].copy()
+                new_accounts = old_accounts.copy()
+                new_accounts.loc[:, 'SK_CustomerID'] = int(customer.tail(1).index[0])
+                new_accounts.loc[:, 'Status'] = 'INACTIVE'
+                new_accounts.loc[:, 'IsCurrent'] = 0
+                new_accounts.loc[:, 'EffectiveDate'] = row.ActionTS[:10]
+                new_accounts.loc[:, 'EndDate'] = "9999-12-31"
+                old_accounts.loc[:, 'EndDate'] = row.ActionTS[:10]
+
+                dim_account.update(old_accounts)
+                dim_account = dim_account.append(new_accounts, ignore_index=True)
+
+        dim_account.index.name = 'SK_AccountID'
+        dim_account.fillna(value={'SK_BrokerID': -1}, inplace=True)
+
+        dim_account['SK_CustomerID'] = dim_account['SK_CustomerID'].astype('int32')
+        dim_account['SK_BrokerID'] = dim_account['SK_BrokerID'].astype('int32')
+        dim_account.index.astype('int32', copy=False)
+        dim_account['AccountID'] = dim_account['AccountID'].astype('int32')
+        dim_account['BatchID'] = dim_account['BatchID'].astype('int32')
+        dim_account['IsCurrent'] = dim_account['IsCurrent'].astype('int32')
+
+        con = get_mysql_engine(self.db_name,self.config)
+        dim_account.to_sql("DimAccount", index=False, if_exists="append", con=con)
+
     def load_target_fact_cash_balance(self):
         """
         create FactCashBalances table
