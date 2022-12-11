@@ -1269,9 +1269,31 @@ class TPCDI_Loader():
 
         con = get_mysql_engine(self.db_name, self.config)
         df_customers.to_sql("DimCustomer", index=False, if_exists="append", con=con)
+        df_messages.to_sql("DImessages", index=False, if_exists="append", con=con)
 
     #TODO: ADD DDL to Dim Account, Insert DImessages as well
     def load_target_dim_account(self):
+
+        dim_account_ddl = """
+            USE """ + self.db_name + """;
+            CREATE TABLE DimAccount(
+                SK_AccountID NUMERIC(11) NOT NULL PRIMARY KEY,
+                AccountID NUMERIC(11) NOT NULL,
+                SK_BrokerID NUMERIC(11) NOT NULL,
+                SK_CustomerID NUMERIC(11) NOT NULL,
+                Status CHAR(10) NOT NULL,
+                AccountDesc CHAR(50),
+                TaxStatus NUMERIC(1) NOT NULL CHECK (TaxStatus IN (0, 1, 2)),
+                IsCurrent BOOLEAN NOT NULL,
+                BatchID NUMERIC(5) NOT NULL,
+                EffectiveDate DATE NOT NULL,
+                EndDate DATE NOT NULL
+                );
+            """
+        dim_account_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + dim_account_ddl + "\""
+
+        # Execute the command
+        os.system(dim_account_ddl_cmd)
 
         conn = get_mysql_conn(self.db_name, self.config)
         query = "SELECT * FROM S_customer"
@@ -1423,7 +1445,120 @@ class TPCDI_Loader():
         dim_account['IsCurrent'] = dim_account['IsCurrent'].astype('int32')
 
         con = get_mysql_engine(self.db_name,self.config)
-        dim_account.to_sql("DimAccount", index=False, if_exists="append", con=con)
+        dim_account.to_sql(con=con, name='DimAccount', if_exists='append')
+
+    def load_target_dim_trade(self):
+
+        columns = ['T_ID', 'T_DTS', 'T_ST_ID', 'T_TT_ID',
+                   'T_IS_CASH', 'T_S_SYMB', 'T_QTY', 'T_BID_PRICE',
+                   'T_CA_ID', 'T_EXEC_NAME', 'T_TRADE_PRICE',
+                   'T_CHRG', 'T_COMM', 'T_TAX']
+        trade = pd.read_csv(self.batch_dir + 'Trade.txt', sep='|', names=columns, parse_dates=['T_DTS'],index_col='T_ID')
+
+        columns = ['TH_T_ID', 'TH_DTS', 'TH_ST_ID']
+        trade_history = pd.read_csv(self.batch_dir + 'TradeHistory.txt', sep='|', names=columns, parse_dates=['TH_DTS'],index_col='TH_T_ID')
+
+        status_type = pd.read_csv(self.batch_dir + 'StatusType.txt', sep='|', names=['ST_ID', 'ST_NAME'],
+                                  index_col='ST_ID')
+        trade_type = pd.read_csv(self.batch_dir + 'TradeType.txt', sep='|',
+                                 names=['TT_ID', 'TT_NAME', 'TT_IS_SELL', 'TT_IS_MRKT'], index_col='TT_ID')
+
+        joined = trade.join(trade_history, on="T_ID")
+
+        conn = get_mysql_conn(self.db_name, self.config)
+        query = "SELECT SK_SecurityID, SK_CompanyID, Symbol, EffectiveDate, EndDate FROM DimSecurity"
+        dim_security = pd.read_sql(query, conn)
+        conn.close()
+        dim_security.set_index('SK_SecurityID', inplace=True)
+
+        conn = get_mysql_conn(self.db_name, self.config)
+        query = "SELECT SK_AccountID, SK_CustomerID, SK_BrokerID, AccountID, EffectiveDate, EndDate FROM DimAccount"
+        dim_account = pd.read_sql(query, conn)
+        conn.close()
+        dim_account.set_index('SK_AccountID', inplace=True)
+
+        conn = get_mysql_conn(self.db_name, self.config)
+        query = "SELECT SK_DateID, DateValue FROM DimDate"
+        dim_date = pd.read_sql(query, conn)
+        conn.close()
+        dim_date.set_index('SK_DateID', inplace=True)
+
+        conn = get_mysql_conn(self.db_name, self.config)
+        query = "SELECT SK_TimeID, TimeValue FROM DimTime"
+        dim_time = pd.read_sql(query, conn)
+        dim_time.TimeValue = pd.to_datetime(datetime.now().date()) + dim_time.TimeValue
+        conn.close()
+        dim_time.set_index('SK_TimeID', inplace=True)
+
+        columns = ['TradeID', 'SK_BrokerID', 'SK_CreateDateID', 'SK_CreateTimeID', 'SK_CloseDateID',
+                   'SK_CloseTimeID', 'Status', 'Type', 'CashFlag', 'SK_SecurityID',
+                   'SK_CompanyID', 'Quantity', 'BidPrice',
+                   'SK_CustomerID', 'SK_AccountID', 'ExecutedBy', 'TradePrice',
+                   'Fee', 'Commission', 'Tax', 'BatchID']
+
+        dim_trade = pd.DataFrame(columns=columns)
+        index_set = set()
+
+        for index, row in joined.iterrows():
+
+            nrow = {
+                "TradeID": index,
+                "CashFlag": row.T_IS_CASH,
+                "Quantity": row.T_QTY,
+                "BidPrice": row.T_BID_PRICE,
+                "ExecutedBy": row.T_EXEC_NAME,
+                "TradePrice": row.T_TRADE_PRICE,
+                "Fee": row.T_CHRG,
+                "Commission": row.T_COMM,
+                "Tax": row.T_TAX,
+                "Status": status_type.loc[row.TH_ST_ID].ST_NAME,
+                "Type": trade_type.loc[row.T_TT_ID].TT_NAME,
+                "BatchId": 1
+            }
+
+            if (row.TH_ST_ID == "SBMT" and row.T_TT_ID in ["TMB", "TMS"]) or row.TH_ST_ID == "PNDG":
+                nrow['SK_CreateDateID'] = dim_date[dim_date['DateValue'] == row.TH_DTS.date()].index[0]
+                nrow['SK_CreateTimeID'] = \
+                dim_time[dim_time['TimeValue'] == row.TH_DTS.time().strftime("%H:%M:%S")].TimeValue.dt.time.index[0]
+                if index not in index_set:
+                    nrow['SK_CloseDateID'] = None
+                    nrow['SK_CloseTimeID'] = None
+
+            if row.TH_ST_ID in ["CMPT", "CNCL"]:
+                nrow['SK_CloseDateID'] = dim_date[dim_date['DateValue'] == row.TH_DTS.date()].index[0]
+                nrow['SK_CloseTimeID'] = \
+                dim_time[dim_time['TimeValue'] == row.TH_DTS.time().strftime("%H:%M:%S")].TimeValue.dt.time.index[0]
+                if index not in index_set:
+                    nrow['SK_CreateDateID'] = None
+                    nrow['SK_CreateTimeID'] = None
+
+            if index not in index_set:
+                record = dim_security[(dim_security['Symbol'] == row.T_S_SYMB) &
+                                      (dim_security['EffectiveDate'] <= row.TH_DTS.date()) &
+                                      (dim_security['EndDate'] > row.TH_DTS.date())]
+
+                if record.shape[0] > 0:
+                    nrow['SK_SecurityID'] = record.index[0]
+                    nrow['SK_CompanyID'] = record.iloc[0]['SK_CompanyID']
+
+                record = dim_account[(dim_account['AccountID'] == row.T_CA_ID) &
+                                     (dim_account['EffectiveDate'] <= row.TH_DTS.date()) &
+                                     (dim_account['EndDate'] > row.TH_DTS)]
+
+                if record.shape[0] > 0:
+                    nrow['SK_AccountID'] = record.index[0]
+                    nrow['SK_CustomerID'] = record.iloc[0]['SK_CustomerID']
+                    nrow['SK_BrokerID'] = record.iloc[0]['SK_BrokerID']
+
+                index_set.add(index)
+                dim_trade = dim_trade.append(nrow, ignore_index=True)
+            else:
+                new_row = pd.DataFrame(nrow, index=[index])
+                dim_trade.update(new_row)
+
+        dim_trade.set_index('TradeID', inplace=True)
+        con = get_mysql_engine(self.db_name,self.config)
+        dim_trade.to_sql(con=con, name='DimTrade', if_exists='append')
 
     def load_target_fact_cash_balance(self):
         """
