@@ -88,6 +88,8 @@ if __name__ == "__main__":
             print("+-------------------DimCustomer Loaded---------------------+")
             loader.load_target_dim_account()
             print("+-------------------DimAccount Loaded----------------------+")
+            loader.load_target_dim_trade()
+            print("+-------------------DimTrade Loaded------------------------+")
             # it has to be loaded after DimAccount
             loader.load_target_fact_cash_balance()
             print("+-----------------FactCashBalance Loaded-------------------+")
