@@ -1296,7 +1296,7 @@ class TPCDI_Loader():
         os.system(dim_account_ddl_cmd)
 
         conn = get_mysql_conn(self.db_name, self.config)
-        query = "SELECT * FROM S_customer"
+        query = "SELECT * FROM S_Customer"
         s_customer = pd.read_sql(query, conn)
         conn.close()
         s_customer = s_customer[['ActionType', 'ActionTS', 'C_ID', 'CA_ID', 'CA_TAX_ST', 'CA_B_ID', 'CA_NAME']]
@@ -1580,8 +1580,8 @@ class TPCDI_Loader():
               INSERT INTO FactCashBalances (SK_CustomerID,SK_AccountID,SK_DateID,Cash,BatchID)
               SELECT C.CT_CA_ID, A.SK_AccountID, D.SK_DateID , C.CT_AMT , 1
               FROM S_Cash_Balances C
-              JOIN DimAccount A ON C.SK_CustomerID = A.SK_CustomerID
-              JOIN DimDate D on DATE(c.CT_DTS) = D.DateValue
+              JOIN DimAccount A ON C.CT_CA_ID = A.SK_CustomerID
+              JOIN DimDate D on DATE(C.CT_DTS) = D.DateValue
               where A.IsCurrent = true
               ON DUPLICATE KEY UPDATE Cash = (Cash + C.CT_AMT);
             """
