@@ -677,6 +677,107 @@ class TPCDI_Loader():
         os.system(prospect_ddl_cmd)
         os.system(prospect_load_cmd)
 
+    def load_staging_trade(self):
+        """
+        Create S_Trade table in the staging database and then load rows in HR.csv into it.
+        """
+        # Create ddl to store broker
+        trade_ddl = """
+        USE """ + self.db_name + """;
+        CREATE TABLE S_Trade(
+            T_ID INTEGER NOT NULL,
+            T_DTS DATETIME NOT NULL,
+            T_ST_ID CHAR(4) NOT NULL,
+            T_TT_ID CHAR(3) NOT NULL,
+            T_IS_CASH BOOLEAN,
+            T_S_SYMB CHAR(15) NOT NULL,
+            T_QTY INTEGER DEFAULT NULL,
+            T_BID_PRICE DECIMAL DEFAULT NULL,
+            T_CA_ID INTEGER NOT NULL,
+            T_EXEC_NAME CHAR(49) NOT NULL,
+            T_TRADE_PRICE DECIMAL NULL DEFAULT NULL,
+            T_CHRG DECIMAL NULL DEFAULT NULL,
+            T_COMM DECIMAL NULL DEFAULT NULL,
+            T_TAX DECIMAL NULL DEFAULT NULL            
+        );
+        """
+        # Create query to load text data into broker table
+        trade_load_query = "LOAD DATA LOCAL INFILE 'staging/" + self.sf + "/Batch1/Trade.txt' INTO TABLE S_Trade COLUMNS TERMINATED BY '|';"
+
+        # Construct mysql client bash command to execute ddl and data loading query
+        trade_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + trade_ddl + "\""
+        trade_load_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " --local-infile=1 -D " + self.db_name + " -e \"" + trade_load_query + "\""
+
+        # Execute the command
+        os.system(trade_ddl_cmd)
+        os.system(trade_load_cmd)
+
+    def load_staging_trade_history(self):
+        """
+        Create S_Trade_History table in the staging database and then load rows in HR.csv into it.
+        """
+        # Create ddl to store broker
+        trade_history_ddl = """
+        USE """ + self.db_name + """;
+        CREATE TABLE S_Trade_History(
+            TH_T_ID INTEGER NOT NULL,
+            TH_DTS DATETIME NOT NULL,
+            TH_ST_ID CHAR(4) NOT NULL            
+        );
+        """
+        # Create query to load text data into broker table
+        trade_history_load_query = "LOAD DATA LOCAL INFILE 'staging/" + self.sf + "/Batch1/TradeHistory.txt' INTO TABLE S_Trade_History COLUMNS TERMINATED BY '|';"
+
+        # Construct mysql client bash command to execute ddl and data loading query
+        trade_history_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + trade_history_ddl + "\""
+        trade_history_load_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " --local-infile=1 -D " + self.db_name + " -e \"" + trade_history_load_query + "\""
+
+        # Execute the command
+        os.system(trade_history_ddl_cmd)
+        os.system(trade_history_load_cmd)
+
+    def load_staging_trade_joined(self):
+        """
+        Create S_Trade_Joined table in the staging database and then load rows in HR.csv into it.
+        """
+        trade_joined_ddl = """
+        USE """ + self.db_name + """;
+        CREATE TABLE S_Trade_Joined(
+            T_ID INTEGER NOT NULL,
+            T_DTS DATETIME NOT NULL,
+            T_ST_ID CHAR(4) NOT NULL,
+            T_TT_ID CHAR(3) NOT NULL,
+            T_IS_CASH BOOLEAN,
+            T_S_SYMB CHAR(15) NOT NULL,
+            T_QTY INTEGER DEFAULT NULL,
+            T_BID_PRICE DECIMAL DEFAULT NULL,
+            T_CA_ID INTEGER NOT NULL,
+            T_EXEC_NAME CHAR(49) NOT NULL,
+            T_TRADE_PRICE DECIMAL NULL DEFAULT NULL,
+            T_CHRG DECIMAL NULL DEFAULT NULL,
+            T_COMM DECIMAL NULL DEFAULT NULL,
+            T_TAX DECIMAL NULL DEFAULT NULL,
+            TH_T_ID INTEGER NOT NULL,
+            TH_DTS DATETIME NOT NULL,
+            TH_ST_ID CHAR(4) NOT NULL,
+            PRIMARY KEY(T_ID, TH_ST_ID)
+        );
+        """
+
+        trade_joined_insert_query = """
+        insert into S_Trade_Joined
+        select * from S_Trade inner join S_Trade_History on s_trade.t_id = th_t_id;
+        """
+
+
+        # Construct mysql client bash command to execute ddl and data loading query
+        trade_joined_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + trade_joined_ddl + "\""
+        trade_joined_insert_query_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " --local-infile=1 -D " + self.db_name + " -e \"" + trade_joined_insert_query + "\""
+
+        # Execute the command
+        os.system(trade_joined_ddl_cmd)
+        os.system(trade_joined_insert_query_cmd)
+
     def load_prospect(self):
         """
     Create Prospect table in the target database and then load rows in Prospect.csv into it.
@@ -1447,6 +1548,53 @@ class TPCDI_Loader():
         con = get_mysql_engine(self.db_name,self.config)
         dim_account.to_sql(con=con, name='DimAccount', if_exists='append')
 
+    def load_target_dim_trade_test(self):
+
+        dim_trade_ddl = """
+        USE """ + self.db_name + """;
+        CREATE TABLE DimTrade(
+            TradeID INTEGER PRIMARY KEY,
+            SK_BrokerID INTEGER,
+            SK_CreateDateID INTEGER NOT NULL,
+            SK_CreateTimeID INTEGER NOT NULL,
+            SK_CloseDateID INTEGER,
+            SK_CloseTimeID INTEGER,
+            Status CHAR(10) NOT NULL,
+            Type CHAR(12) NOT NULL,
+            CashFlag BOOLEAN,
+            SK_SecurityID INTEGER NOT NULL,
+            SK_CompanyID INTEGER NOT NULL,
+            Quantity DECIMAL(6,0) NOT NULL,
+            BidPrice DECIMAL(8,2) NOT NULL,
+            SK_AccountID INTEGER NOT NULL,
+            ExecutedBy CHAR(64) NOT NULL,
+            TradePrice DECIMAL(8,2),
+            Fee DECIMAL(10,2),
+            Commission DECIMAL(10,2),
+            Tax DECIMAL DECIMAL(10,2),
+            BatchID DECIMAL(5) NOT NULL
+        );
+        """
+
+        dim_trade_ddl_load_query = """
+        INSERT INTO DimTrade (SK_CustomerID,SK_AccountID,SK_DateID,Cash,BatchID)
+        SELECT C.CT_CA_ID, A.SK_AccountID, D.SK_DateID , C.CT_AMT , 1
+        FROM S_Cash_Balances C
+        JOIN DimAccount A ON C.SK_CustomerID = A.SK_CustomerID
+        JOIN DimDate D on DATE(c.CT_DTS) = D.DateValue
+        where A.IsCurrent = true
+        ON DUPLICATE KEY UPDATE Cash = (Cash + C.CT_AMT);
+        """
+
+        # Construct mysql client bash command to execute ddl and data loading query
+        dim_trade_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + dim_trade_ddl + "\""
+        dim_trade_ddl_load_query_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " --local-infile=1 -D " + self.db_name + " -e \"" + dim_trade_ddl_load_query + "\""
+
+        # Execute the command
+        os.system(dim_trade_ddl_cmd)
+        os.system(dim_trade_ddl_load_query_cmd)
+
+        pass
     def load_target_dim_trade(self):
 
         columns = ['T_ID', 'T_DTS', 'T_ST_ID', 'T_TT_ID',
