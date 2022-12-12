@@ -1397,7 +1397,7 @@ class TPCDI_Loader():
         os.system(dim_account_ddl_cmd)
 
         conn = get_mysql_conn(self.db_name, self.config)
-        query = "SELECT * FROM S_customer"
+        query = "SELECT * FROM S_Customer"
         s_customer = pd.read_sql(query, conn)
         conn.close()
         s_customer = s_customer[['ActionType', 'ActionTS', 'C_ID', 'CA_ID', 'CA_TAX_ST', 'CA_B_ID', 'CA_NAME']]
@@ -1728,8 +1728,8 @@ class TPCDI_Loader():
               INSERT INTO FactCashBalances (SK_CustomerID,SK_AccountID,SK_DateID,Cash,BatchID)
               SELECT C.CT_CA_ID, A.SK_AccountID, D.SK_DateID , C.CT_AMT , 1
               FROM S_Cash_Balances C
-              JOIN DimAccount A ON C.SK_CustomerID = A.SK_CustomerID
-              JOIN DimDate D on DATE(c.CT_DTS) = D.DateValue
+              JOIN DimAccount A ON C.CT_CA_ID = A.SK_CustomerID
+              JOIN DimDate D on DATE(C.CT_DTS) = D.DateValue
               where A.IsCurrent = true
               ON DUPLICATE KEY UPDATE Cash = (Cash + C.CT_AMT);
             """
@@ -2016,3 +2016,38 @@ class TPCDI_Loader():
         # Execute the command
         os.system(fact_holding_ddl_cmd)
         os.system(fact_holding_load_cmd)
+
+    def load_target_fact_watches(self):
+        """
+        create FactWatches table
+         """
+        # Create ddl to store FactWatches
+        fact_watches_ddl = """
+               USE """ + self.db_name + """;
+        
+               CREATE TABLE FactWatches (
+                   SK_CustomerID INTEGER NOT NULL,
+                   SK_SecurityID INTEGER NOT NULL,
+                   SK_DateID_DatePlaced INTEGER NOT NULL,
+                   SK_DateID_DateRemoved INTEGER ,
+                   BatchID numeric(5) Not NULL, 
+                   PRIMARY KEY(SK_CustomerID, SK_SecurityID)
+                 );
+               """
+        fact_watches_load_query = """
+                     INSERT INTO FactWatches 
+                     SELECT C.CustomerID, S.SK_SecurityID, D.SK_DateID, Null ,1
+                     FROM S_Watches W
+                     JOIN DimCustomer C ON W.W_C_ID = C.CustomerID
+                     JOIN DimSecurity S ON S.Symbol = W.W_S_SYMB
+                    JOIN DimDate D on DATE(W.W_DTS) = D.DateValue
+                    ON DUPLICATE KEY UPDATE SK_DateID_DateRemoved = D.SK_DateID;
+                   """
+
+        # Construct mysql client bash command to execute ddl and data loading query
+        fact_watches_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + fact_watches_ddl + "\""
+        fact_watches_load_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " --local-infile=1 -D " + self.db_name + " -e \"" + fact_watches_load_query + "\""
+
+        # Execute the command
+        os.system(fact_watches_ddl_cmd)
+        os.system(fact_watches_load_cmd)
