@@ -1868,3 +1868,38 @@ class TPCDI_Loader():
         # Execute the command
         os.system(fact_holding_ddl_cmd)
         os.system(fact_holding_load_cmd)
+
+    def load_target_fact_watches(self):
+        """
+        create FactWatches table
+         """
+        # Create ddl to store FactWatches
+        fact_watches_ddl = """
+               USE """ + self.db_name + """;
+        
+               CREATE TABLE FactWatches (
+                   SK_CustomerID INTEGER NOT NULL,
+                   SK_SecurityID INTEGER NOT NULL,
+                   SK_DateID_DatePlaced INTEGER NOT NULL,
+                   SK_DateID_DateRemoved INTEGER ,
+                   BatchID numeric(5) Not NULL, 
+                   PRIMARY KEY(SK_CustomerID, SK_SecurityID)
+                 );
+               """
+        fact_watches_load_query = """
+                     INSERT INTO FactWatches 
+                     SELECT C.CustomerID, S.SK_SecurityID, D.SK_DateID, Null ,1
+                     FROM S_Watches W
+                     JOIN DimCustomer C ON W.W_C_ID = C.CustomerID
+                     JOIN DimSecurity S ON S.Symbol = W.W_S_SYMB
+                    JOIN DimDate D on DATE(W.W_DTS) = D.DateValue
+                    ON DUPLICATE KEY UPDATE SK_DateID_DateRemoved = D.SK_DateID;
+                   """
+
+        # Construct mysql client bash command to execute ddl and data loading query
+        fact_watches_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + fact_watches_ddl + "\""
+        fact_watches_load_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " --local-infile=1 -D " + self.db_name + " -e \"" + fact_watches_load_query + "\""
+
+        # Execute the command
+        os.system(fact_watches_ddl_cmd)
+        os.system(fact_watches_load_cmd)

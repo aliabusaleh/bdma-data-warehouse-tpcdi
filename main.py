@@ -84,18 +84,36 @@ if __name__ == "__main__":
             print("+------------------Prospect Table Loaded-------------------+")
             loader.load_broker()
             print("+-------------------DimBroker Loaded-----------------------+")
+
+            print("+-------------------DimCustomer loading ...---------------------+")
             loader.load_target_dim_customer()
             print("+-------------------DimCustomer Loaded---------------------+")
+
+            print("+-------------------DimAccount loading ... ----------------------+")
             loader.load_target_dim_account()
             print("+-------------------DimAccount Loaded----------------------+")
+
+            print("+-------------------DimTrade loading ...------------------------+")
             loader.load_target_dim_trade()
             print("+-------------------DimTrade Loaded------------------------+")
+
+            print("+-----------------FactCashBalance loading ...-------------------+")
             # it has to be loaded after DimAccount
             loader.load_target_fact_cash_balance()
             print("+-----------------FactCashBalance Loaded-------------------+")
+
+            print("+-------------------FactHolding loading ...---------------------+")
             # it has to be loaded after DimTrade
-            # loader.load_target_fact_holding()
-            # print("+-------------------FactHolding Loaded---------------------+")
+            loader.load_target_fact_holding()
+            print("+-------------------FactHolding Loaded---------------------+")
+
+            # depends on DimCustomer, DimSecurity, DimDate
+            print("+-------------------FactWatches loading ...---------------------+")
+            loader.load_target_fact_watches()
+            print("+-------------------FactWatches Loaded---------------------+")
+
+
+
 
     end = time.time()
     print(end-start)
