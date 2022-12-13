@@ -1903,3 +1903,34 @@ class TPCDI_Loader():
         # Execute the command
         os.system(fact_watches_ddl_cmd)
         os.system(fact_watches_load_cmd)
+
+
+    def load_staging_daily_market(self):
+        """
+                create staging area for FactMarketHistory table from dailymarket.txt
+                 """
+        # Create ddl to store FactWatches
+        daily_market_ddl = """
+                       USE """ + self.db_name + """;
+
+                       CREATE TABLE S_DailyMarketHistory (
+                           DM_DATE DATE NOT NULL,
+                           DM_S_SYMB char(15) NOT NULL,
+                           DM_CLOSE NUMERIC NOT NULL,
+                           DM_HIGH NUMERIC ,
+                           DM_LOW NUMERIC Not NULL, 
+                           DM_VOL NUMERIC 
+                         );
+                       """
+        # Create query to load text data into prospect table
+        daily_market_load_query = "LOAD DATA LOCAL INFILE 'staging/" + self.sf + "/Batch1/DailyMarket.txt' INTO " \
+                                                                                 "TABLE S_DailyMarketHistory COLUMNS " \
+                                                                                 "TERMINATED BY '|';"
+
+        # Construct mysql client bash command to execute ddl and data loading query
+        daily_market_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + daily_market_ddl + "\""
+        daily_market_load_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " --local-infile=1 -D " + self.db_name + " -e \"" + daily_market_load_query + "\""
+
+        # Execute the command
+        os.system(daily_market_ddl_cmd)
+        os.system(daily_market_load_cmd)
