@@ -72,6 +72,9 @@ if __name__ == "__main__":
             loader.load_staging_watches()
             print("+-------Loading FactHolding Data to Staging Table----------+")
             loader.load_staging_fact_holding()
+            loader.load_staging_trade()
+            loader.load_staging_trade_history()
+            loader.load_staging_trade_joined()
 
             # Step 4: Load dependant table
             loader.load_target_dim_company()
@@ -111,9 +114,6 @@ if __name__ == "__main__":
             print("+-------------------FactWatches loading ...---------------------+")
             loader.load_target_fact_watches()
             print("+-------------------FactWatches Loaded---------------------+")
-
-
-
 
     end = time.time()
     print(end-start)
