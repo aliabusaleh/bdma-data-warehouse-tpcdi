@@ -75,6 +75,9 @@ if __name__ == "__main__":
             print("+-------Loading FactMarketHistory Data to Staging Table----------+")
             loader.load_staging_daily_market()
 
+            loader.load_staging_trade()
+            loader.load_staging_trade_history()
+            loader.load_staging_trade_joined()
 
             # Step 4: Load dependant table
             loader.load_target_dim_company()
