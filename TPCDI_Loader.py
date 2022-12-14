@@ -766,13 +766,12 @@ class TPCDI_Loader():
 
         trade_joined_insert_query = """
         insert into S_Trade_Joined
-        select * from S_Trade inner join S_Trade_History on s_trade.t_id = th_t_id;
+        select * from S_Trade inner join S_Trade_History on S_Trade.t_id = th_t_id;
         """
-
 
         # Construct mysql client bash command to execute ddl and data loading query
         trade_joined_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + trade_joined_ddl + "\""
-        trade_joined_insert_query_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " --local-infile=1 -D " + self.db_name + " -e \"" + trade_joined_insert_query + "\""
+        trade_joined_insert_query_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + trade_joined_insert_query + "\""
 
         # Execute the command
         os.system(trade_joined_ddl_cmd)
@@ -985,7 +984,7 @@ class TPCDI_Loader():
         max_packet = 150
         for fname in os.listdir(base_path):
             if ("FINWIRE" in fname and "audit" not in fname):
-                with open(base_path + fname, 'r') as finwire_file:
+                with open(base_path + fname, 'r',  errors='ignore') as finwire_file:
                     for line in finwire_file:
                         pts = line[:15]  # 0
                         rec_type = line[15:18]  # 1
@@ -1798,7 +1797,7 @@ class TPCDI_Loader():
         tade_history_ddl = """
     USE """ + self.db_name + """;
 
-    CREATE TABLE s_trade_history(
+    CREATE TABLE S_Trade_History(
       th_t_id NUMERIC(15),
       th_dts DATETIME,
       th_st_id CHAR(4)
@@ -1807,7 +1806,7 @@ class TPCDI_Loader():
     """
 
         # Create query to load text data into tade_history table
-        tade_history_load_query = "LOAD DATA LOCAL INFILE '" + self.batch_dir + "TradeHistory.txt' INTO TABLE s_trade_history COLUMNS TERMINATED BY '|';"
+        tade_history_load_query = "LOAD DATA LOCAL INFILE '" + self.batch_dir + "TradeHistory.txt' INTO TABLE S_Trade_History COLUMNS TERMINATED BY '|';"
 
         # Construct mysql client bash command to execute ddl and data loading query
         tade_history_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + tade_history_ddl + "\""
@@ -1826,7 +1825,7 @@ class TPCDI_Loader():
         tade_ddl = """
     USE """ + self.db_name + """;
 
-    CREATE TABLE s_trade(
+    CREATE TABLE S_Trade(
       cdc_flag CHAR(1),
       cdc_dsn NUMERIC(12),
       t_id NUMERIC(15),
@@ -1850,11 +1849,11 @@ class TPCDI_Loader():
 
         if self.batch_number == 1:
             # Create query to load text data into tade_ table
-            tade_load_query = "LOAD DATA LOCAL INFILE '" + self.batch_dir + "Trade.txt' INTO TABLE s_trade COLUMNS TERMINATED BY '|' \
+            tade_load_query = "LOAD DATA LOCAL INFILE '" + self.batch_dir + "Trade.txt' INTO TABLE S_Trade COLUMNS TERMINATED BY '|' \
       (t_id,t_dts,t_st_id,t_tt_id,t_is_cash,t_s_symb,t_qty,t_bid_price,t_ca_id,t_exec_name,t_trade_price,t_chrg,t_comm,t_tax);"
         else:
             # Create query to load text data into tade_ table
-            tade_load_query = "LOAD DATA LOCAL INFILE '" + self.batch_dir + "Trade.txt' INTO TABLE s_trade COLUMNS TERMINATED BY '|'"
+            tade_load_query = "LOAD DATA LOCAL INFILE '" + self.batch_dir + "Trade.txt' INTO TABLE S_Trade COLUMNS TERMINATED BY '|'"
 
         # Construct mysql client bash command to execute ddl and data loading query
         tade_ddl_cmd = TPCDI_Loader.BASE_MYSQL_CMD + " -D " + self.db_name + " -e \"" + tade_ddl + "\""
