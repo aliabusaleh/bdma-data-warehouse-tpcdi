@@ -1,0 +1,71 @@
++--------------Going to Load Batch Date--------------------+
++--------------Batch Loading Completed---------------------+
++-------------------DimDate Loaded-------------------------+
++-------------------DimTime Loaded-------------------------+
++-------------------Industry Loaded------------------------+
++-------------------StatusType Loaded----------------------+
++-------------------TaxRate Loadedd------------------------+
++-------------------TradeType Loaded-----------------------+
++-------------------Audit Loaded---------------------------+
++---------------DImessage initialized----------------------+
++---------Loading Finware Data to Staging Table------------+
++---------Loading Porspect Data to Staging Table-----------+
++---------Loading Broker Data to Staging Table-------------+
++---------Loading Customer Data to Staging Table-----------+
++-------Loading CashBalance Data to Staging Table----------+
++---------Loading Watches Data to Staging Table------------+
++-------Loading FactHolding Data to Staging Table----------+
++-------Loading FactMarketHistory Data to Staging Table----------+
++-------Loading S_trade Data to Staging Table----------+
++-------Loading S_trade_history Data to Staging Table----------+
++-------Loading joined trade Data to Staging Table----------+
++-------------------DimCompany Loaded----------------------+
++-----------------Financial Table Loaded-------------------+
++-------------------DimSecurity Loaded---------------------+
+create function using command
+mysql -h localhost -uroot -pAli123 -P3306 -D tpcdi5 -e "
+    DROP FUNCTION IF EXISTS get_marketing_template;
+    DELIMITER //
+    CREATE FUNCTION get_marketing_template(net_worth NUMERIC, income NUMERIC,
+        number_credit_cards NUMERIC, number_children NUMERIC, age NUMERIC,
+        credit_rating NUMERIC, number_cars NUMERIC) RETURNS  CHAR(100) DETERMINISTIC
+      BEGIN
+      DECLARE marketing_template CHAR(100);
+    set marketing_template = '';
+        IF (net_worth>1000000 OR income>200000) THEN
+          set marketing_template =  CONCAT(marketing_template, '+HighValue');
+        END IF;
+        IF (number_credit_cards>5 OR number_children>3) THEN
+          set marketing_template =  CONCAT(marketing_template, '+Expenses');
+        END IF;
+        IF (age>45) THEN
+          set marketing_template = CONCAT(marketing_template, '+Boomer');
+        END IF;
+        IF (credit_rating<600 or income <5000 or net_worth < 100000) THEN
+          set marketing_template =  CONCAT(marketing_template, '+MoneyAlert');
+        END IF;
+        IF (number_cars>3 or number_credit_cards>7) THEN
+          set marketing_template =  CONCAT(marketing_template, '+Spender');
+        END IF;
+        IF (age>25 or net_worth>1000000) THEN
+          set marketing_template =  CONCAT(marketing_template, '+Inherited');
+        END IF;
+        RETURN RIGHT(marketing_template,character_length(marketing_template)-1);
+      END //
+    DELIMITER ;
+    "
++------------------Prospect Table Loaded-------------------+
++-------------------DimBroker Loaded-----------------------+
++-------------------DimCustomer loading ...---------------------+
++-------------------DimCustomer Loaded---------------------+
++-------------------DimAccount loading ... ----------------------+
++-------------------DimAccount Loaded----------------------+
++-------------------DimTrade loading ...------------------------+
++-------------------DimTrade Loaded------------------------+
++-----------------FactCashBalance loading ...-------------------+
++-----------------FactCashBalance Loaded-------------------+
++-------------------FactHolding loading ...---------------------+
++-------------------FactHolding Loaded---------------------+
++-------------------FactWatches loading ...---------------------+
++-------------------FactWatches Loaded---------------------+
+583.8783297538757
