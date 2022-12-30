@@ -1,56 +1,56 @@
-BatchDate loaded with total time: 0.00970768928527832 
+BatchDate loaded with total time: 0.00873255729675293 
  
 --------------------------------------------------
 start non dependence loading
-DimDate loaded with total time: 0.24669528007507324 
+DimDate loaded with total time: 0.23809480667114258 
  
-DimTime loaded with total time: 0.48230457305908203 
+DimTime loaded with total time: 0.4743809700012207 
  
-Industry loaded with total time: 0.022000551223754883 
+Industry loaded with total time: 0.02152705192565918 
  
-StatusType loaded with total time: 0.026997804641723633 
+StatusType loaded with total time: 0.02587270736694336 
  
-TaxRate loaded with total time: 0.030137300491333008 
+TaxRate loaded with total time: 0.025999069213867188 
  
-TradeType loaded with total time: 0.03307485580444336 
+TradeType loaded with total time: 0.02277374267578125 
  
-Audit loaded with total time: 1.7773687839508057 
+Audit loaded with total time: 1.6586127281188965 
  
-DiMessages initialized with total time: 0.015183687210083008 
+DiMessages initialized with total time: 0.011767864227294922 
  
-Finish non dependence with total: 2.6339306831359863 
+Finish non dependence with total: 2.4792227745056152 
 
 --------------------------------------------------
 Starting Load Staging tables
-Stage FinWire loaded with total time: 8.139392137527466 
+Stage FinWire loaded with total time: 7.357573986053467 
  
-Stage Prospect loaded with total time: 0.207777738571167 
+Stage Prospect loaded with total time: 0.2053816318511963 
  
-Stage Broker loaded with total time: 0.1257002353668213 
+Stage Broker loaded with total time: 0.12977910041809082 
  
-Stage Customer loaded with total time: 2.196012258529663 
+Stage Customer loaded with total time: 2.055415630340576 
  
-Stage CashBalances loaded with total time: 1.8303229808807373 
+Stage CashBalances loaded with total time: 1.7998666763305664 
  
-Stage Watches loaded with total time: 3.8246748447418213 
+Stage Watches loaded with total time: 3.5824179649353027 
  
-Stage FactHolding loaded with total time: 1.0212793350219727 
+Stage FactHolding loaded with total time: 1.1177098751068115 
  
-Stage DailyMarket loaded with total time: 6.007477045059204 
+Stage DailyMarket loaded with total time: 6.246668815612793 
  
-Stage Trade loaded with total time: 2.8534998893737793 
+Stage Trade loaded with total time: 2.633718490600586 
  
-Stage TradeHistory with total time: 2.8568577766418457 
+Stage TradeHistory with total time: 2.998558759689331 
  
-Stage TradeJoined loaded with total time: 43.45438885688782 
+Stage TradeJoined loaded with total time: 39.23842406272888 
  
-Finish stage loading with total time:  72.51761293411255 
+Finish stage loading with total time:  67.36574864387512 
 
 --------------------------------------------------
 start Loading dependant tables 
-DimCompany loaded with total time 1.6344397068023682
-Target Financial loaded with total time 2.5868518352508545
-DimSecurity loaded with total time 4.688690662384033
+DimCompany loaded with total time 2.0281660556793213
+Target Financial loaded with total time 1.53409743309021
+DimSecurity loaded with total time 2.081609010696411
 create function using command
 mysql -h localhost -uroot -pAli123 -P3306 -D tpcdi3 -e "
     DROP FUNCTION IF EXISTS get_marketing_template;
@@ -83,12 +83,14 @@ mysql -h localhost -uroot -pAli123 -P3306 -D tpcdi3 -e "
       END //
     DELIMITER ;
     "
-Prospect loaded with total time 6.1122002601623535
-Broker loaded with total time 6.2456724643707275
-DimCustomer loaded with total time 75.3897180557251
-DimAccount loaded with total time 126.94614672660828
-DimTrade loaded with total time 148.09424781799316
-FactCashBalance loaded with total time 234.880544424057
-FactHolding loaded with total time 236.9533371925354
-FactWatches loaded with total time 259.28246688842773
-334.61447167396545
+Prospect loaded with total time 1.7139003276824951
+Broker loaded with total time 0.20356965065002441
+DimCustomer loaded with total time 62.8764865398407
+DimAccount loaded with total time 45.96002459526062
+DimTrade loaded with total time 22.112856149673462
+FactCashBalance loaded with total time 126.22208619117737
+FactHolding loaded with total time 2.2166736125946045
+FactWatches loaded with total time 26.249880075454712
+All dependence tables loaded with total: 293.19960165023804
+--------------------------------------------------
+total time for execution is 363.2585361003876

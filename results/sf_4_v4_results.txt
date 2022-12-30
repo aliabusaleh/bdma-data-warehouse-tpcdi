@@ -1,0 +1,96 @@
+BatchDate loaded with total time: 0.007353305816650391 
+ 
+--------------------------------------------------
+start non dependence loading
+DimDate loaded with total time: 0.26410531997680664 
+ 
+DimTime loaded with total time: 0.4725508689880371 
+ 
+Industry loaded with total time: 0.04364657402038574 
+ 
+StatusType loaded with total time: 0.030145645141601562 
+ 
+TaxRate loaded with total time: 0.027165651321411133 
+ 
+TradeType loaded with total time: 0.02307581901550293 
+ 
+Audit loaded with total time: 1.8131070137023926 
+ 
+DiMessages initialized with total time: 0.011835575103759766 
+ 
+Finish non dependence with total: 2.685826063156128 
+
+--------------------------------------------------
+Starting Load Staging tables
+Stage FinWire loaded with total time: 13.519842386245728 
+ 
+Stage Prospect loaded with total time: 0.28504300117492676 
+ 
+Stage Broker loaded with total time: 0.1674816608428955 
+ 
+Stage Customer loaded with total time: 5.89311671257019 
+ 
+Stage CashBalances loaded with total time: 8.652297973632812 
+ 
+Stage Watches loaded with total time: 17.37442946434021 
+ 
+Stage FactHolding loaded with total time: 6.51019024848938 
+ 
+Stage DailyMarket loaded with total time: 17.161882638931274 
+ 
+Stage Trade loaded with total time: 3.827735185623169 
+ 
+Stage TradeHistory with total time: 4.981530427932739 
+ 
+Stage TradeJoined loaded with total time: 82.49577951431274 
+ 
+Finish stage loading with total time:  160.86966013908386 
+
+--------------------------------------------------
+start Loading dependant tables 
+DimCompany loaded with total time 3.337480306625366
+Target Financial loaded with total time 1.845651626586914
+DimSecurity loaded with total time 4.646501302719116
+create function using command
+mysql -h localhost -uroot -pAli123 -P3306 -D tpcdi4 -e "
+    DROP FUNCTION IF EXISTS get_marketing_template;
+    DELIMITER //
+    CREATE FUNCTION get_marketing_template(net_worth NUMERIC, income NUMERIC,
+        number_credit_cards NUMERIC, number_children NUMERIC, age NUMERIC,
+        credit_rating NUMERIC, number_cars NUMERIC) RETURNS  CHAR(100) DETERMINISTIC
+      BEGIN
+      DECLARE marketing_template CHAR(100);
+    set marketing_template = '';
+        IF (net_worth>1000000 OR income>200000) THEN
+          set marketing_template =  CONCAT(marketing_template, '+HighValue');
+        END IF;
+        IF (number_credit_cards>5 OR number_children>3) THEN
+          set marketing_template =  CONCAT(marketing_template, '+Expenses');
+        END IF;
+        IF (age>45) THEN
+          set marketing_template = CONCAT(marketing_template, '+Boomer');
+        END IF;
+        IF (credit_rating<600 or income <5000 or net_worth < 100000) THEN
+          set marketing_template =  CONCAT(marketing_template, '+MoneyAlert');
+        END IF;
+        IF (number_cars>3 or number_credit_cards>7) THEN
+          set marketing_template =  CONCAT(marketing_template, '+Spender');
+        END IF;
+        IF (age>25 or net_worth>1000000) THEN
+          set marketing_template =  CONCAT(marketing_template, '+Inherited');
+        END IF;
+        RETURN RIGHT(marketing_template,character_length(marketing_template)-1);
+      END //
+    DELIMITER ;
+    "
+Prospect loaded with total time 2.2678637504577637
+Broker loaded with total time 0.13731098175048828
+DimCustomer loaded with total time 126.4663257598877
+DimAccount loaded with total time 114.33923196792603
+DimTrade loaded with total time 33.41126799583435
+FactCashBalance loaded with total time 154.79305863380432
+FactHolding loaded with total time 3.563387155532837
+FactWatches loaded with total time 41.541879415512085
+All dependence tables loaded with total: 486.3503968715668
+--------------------------------------------------
+total time for execution is 650.0769107341766
